@@ -46,6 +46,9 @@ contract DeployRevline is Script {
     }
 
     function deploy(address usdc, address admin) public returns (Lattice diamond) {
+        require(usdc != address(0), "USDC is zero");
+        require(admin != address(0), "admin is zero");
+
         FacetCut[] memory cuts = new FacetCut[](8);
         cuts[0] = _add(address(new ERC165Facet()));
         cuts[1] = _add(address(new AccessControl()));
@@ -110,10 +113,13 @@ contract DeployRevline is Script {
     function run() external returns (Lattice diamond) {
         uint256 privateKey = vm.envUint("PRIVATE_KEY");
         address admin = vm.addr(privateKey);
+        require(ARC_USDC.code.length != 0, "Arc USDC unavailable");
 
         vm.startBroadcast(privateKey);
         diamond = deploy(ARC_USDC, admin);
         console2.log("Revline Diamond", address(diamond));
+        console2.log("Arc USDC", ARC_USDC);
+        console2.log("Admin / underwriter", admin);
         vm.stopBroadcast();
     }
 }

@@ -231,6 +231,109 @@ contract RevlineCreditTest is RevlineTestBase {
         creditFacet.drawAdvance(100e6);
     }
 
+    function test_paymentRepaysPrincipalFirstAndPreservesManagedAssets() public {
+        _drawHundredUsdcAdvance();
+        RevlineTypes.PoolStats memory beforeStats = creditFacet.poolStats();
+        uint256 merchantBalanceBefore = usdc.balanceOf(merchant);
+
+        vm.prank(merchant);
+        uint256 invoiceId = invoiceFacet.createInvoice(50e6, 0, "Repayment 1");
+        vm.prank(customer);
+        usdc.approve(address(diamond), 50e6);
+
+        vm.expectEmit(true, true, false, true, address(diamond));
+        emit IRevlineEvents.RepaymentApplied(1, invoiceId, 10e6, 10e6, 0, 95e6);
+        vm.expectEmit(true, true, true, true, address(diamond));
+        emit IRevlineEvents.InvoicePaid(invoiceId, merchant, customer, 50e6, 40e6, 10e6);
+        vm.prank(customer);
+        invoiceFacet.payInvoice(invoiceId);
+
+        RevlineTypes.Advance memory advance = creditFacet.getAdvance(1);
+        RevlineTypes.PoolStats memory afterStats = creditFacet.poolStats();
+        assertEq(usdc.balanceOf(merchant), merchantBalanceBefore + 40e6);
+        assertEq(advance.principalOutstanding, 90e6);
+        assertEq(advance.repaid, 10e6);
+        assertEq(afterStats.outstandingPrincipal, 90e6);
+        assertEq(afterStats.totalRepaid, 10e6);
+        assertEq(afterStats.totalFeesEarned, 0);
+        assertEq(afterStats.managedAssets, beforeStats.managedAssets);
+        assertEq(merchantFacet.getMerchant(merchant).lifetimeRevenue, 550e6);
+        assertEq(merchantFacet.getMerchant(merchant).totalRepaid, 10e6);
+    }
+
+    function test_tenPaymentsRepayPrincipalButDoNotRealizeFee() public {
+        _drawHundredUsdcAdvance();
+        uint256 managedAssetsAfterDraw = creditFacet.poolStats().managedAssets;
+
+        for (uint256 i; i < 10; ++i) {
+            _payNewInvoice(50e6);
+        }
+
+        RevlineTypes.Advance memory advance = creditFacet.getAdvance(1);
+        RevlineTypes.PoolStats memory stats = creditFacet.poolStats();
+        assertEq(advance.principalOutstanding, 0);
+        assertEq(advance.repaid, 100e6);
+        assertEq(uint256(advance.status), uint256(RevlineTypes.AdvanceStatus.Active));
+        assertEq(advance.totalOwed - advance.repaid, 5e6);
+        assertEq(stats.outstandingPrincipal, 0);
+        assertEq(stats.totalRepaid, 100e6);
+        assertEq(stats.totalFeesEarned, 0);
+        assertEq(stats.managedAssets, managedAssetsAfterDraw);
+        assertEq(merchantFacet.getMerchant(merchant).activeAdvanceId, 1);
+    }
+
+    function test_finalPaymentCapsRepaymentRealizesFeeAndClosesAdvance() public {
+        _drawHundredUsdcAdvance();
+        uint256 managedAssetsAfterDraw = creditFacet.poolStats().managedAssets;
+        for (uint256 i; i < 10; ++i) {
+            _payNewInvoice(50e6);
+        }
+
+        vm.prank(merchant);
+        uint256 invoiceId = invoiceFacet.createInvoice(50e6, 0, "Final repayment");
+        vm.prank(customer);
+        usdc.approve(address(diamond), 50e6);
+        uint256 merchantBalanceBefore = usdc.balanceOf(merchant);
+
+        vm.expectEmit(true, true, false, true, address(diamond));
+        emit IRevlineEvents.RepaymentApplied(1, invoiceId, 5e6, 0, 5e6, 0);
+        vm.expectEmit(true, true, false, true, address(diamond));
+        emit IRevlineEvents.AdvanceRepaid(1, merchant, 105e6, uint64(block.timestamp));
+        vm.expectEmit(true, true, true, true, address(diamond));
+        emit IRevlineEvents.InvoicePaid(invoiceId, merchant, customer, 50e6, 45e6, 5e6);
+        vm.prank(customer);
+        invoiceFacet.payInvoice(invoiceId);
+
+        RevlineTypes.Advance memory advance = creditFacet.getAdvance(1);
+        RevlineTypes.PoolStats memory stats = creditFacet.poolStats();
+        assertEq(usdc.balanceOf(merchant), merchantBalanceBefore + 45e6);
+        assertEq(advance.repaid, 105e6);
+        assertEq(advance.repaidAt, uint64(block.timestamp));
+        assertEq(uint256(advance.status), uint256(RevlineTypes.AdvanceStatus.Repaid));
+        assertEq(stats.totalRepaid, 105e6);
+        assertEq(stats.totalFeesEarned, 5e6);
+        assertEq(stats.managedAssets, managedAssetsAfterDraw + 5e6);
+        assertEq(merchantFacet.getMerchant(merchant).activeAdvanceId, 0);
+    }
+
+    function test_reborrowBlockedUntilFeePaidThenAllowed() public {
+        _drawHundredUsdcAdvance();
+        for (uint256 i; i < 10; ++i) {
+            _payNewInvoice(50e6);
+        }
+
+        vm.prank(merchant);
+        vm.expectRevert(abi.encodeWithSelector(IRevlineErrors.ActiveAdvanceExists.selector, merchant, 1));
+        creditFacet.drawAdvance(100e6);
+
+        _payNewInvoice(50e6);
+
+        vm.prank(merchant);
+        uint256 secondAdvanceId = creditFacet.drawAdvance(100e6);
+        assertEq(secondAdvanceId, 2);
+        assertEq(merchantFacet.getMerchant(merchant).activeAdvanceId, 2);
+    }
+
     function _bindFacets() internal {
         creditFacet = CreditFacet(address(diamond));
         invoiceFacet = InvoiceFacet(address(diamond));
@@ -265,6 +368,21 @@ contract RevlineCreditTest is RevlineTestBase {
         uint256 invoiceId = invoiceFacet.createInvoice(revenue, 0, "Revenue");
         vm.prank(customer);
         usdc.approve(address(diamond), revenue);
+        vm.prank(customer);
+        invoiceFacet.payInvoice(invoiceId);
+    }
+
+    function _drawHundredUsdcAdvance() internal {
+        _prepareMerchant(500e6, true);
+        vm.prank(merchant);
+        creditFacet.drawAdvance(100e6);
+    }
+
+    function _payNewInvoice(uint256 amount) internal returns (uint256 invoiceId) {
+        vm.prank(merchant);
+        invoiceId = invoiceFacet.createInvoice(amount, 0, "Revenue repayment");
+        vm.prank(customer);
+        usdc.approve(address(diamond), amount);
         vm.prank(customer);
         invoiceFacet.payInvoice(invoiceId);
     }

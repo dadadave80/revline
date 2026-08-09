@@ -7,6 +7,7 @@ import {RevlineStorage} from "../RevlineStorage.sol";
 import {RevlineTypes} from "../RevlineTypes.sol";
 import {IRevlineErrors} from "../interfaces/IRevlineErrors.sol";
 import {IRevlineEvents} from "../interfaces/IRevlineEvents.sol";
+import {CreditMath} from "../libraries/CreditMath.sol";
 import {RevenueLib} from "../libraries/RevenueLib.sol";
 import {USDCTransferLib} from "../libraries/USDCTransferLib.sol";
 
@@ -72,10 +73,38 @@ contract InvoiceFacet is ReentrancyGuard, IRevlineEvents {
         invoice.paidAt = uint64(block.timestamp);
         RevenueLib.record(invoice.merchant, invoice.amount);
 
-        address payout = $.merchants[invoice.merchant].payout;
-        USDCTransferLib.safeTransfer($.usdc, payout, invoice.amount);
+        RevlineTypes.Merchant storage merchant = $.merchants[invoice.merchant];
+        uint256 repayment;
+        uint256 activeAdvanceId = merchant.activeAdvanceId;
+        if (activeAdvanceId != 0) {
+            RevlineTypes.Advance storage advance = $.advances[activeAdvanceId];
+            repayment = CreditMath.repaymentFor(invoice.amount, advance.totalOwed - advance.repaid);
+            uint256 principalApplied = CreditMath.min(repayment, advance.principalOutstanding);
+            uint256 feeApplied = repayment - principalApplied;
 
-        emit InvoicePaid(invoiceId, invoice.merchant, msg.sender, invoice.amount, invoice.amount, 0);
+            advance.principalOutstanding -= principalApplied;
+            advance.repaid += repayment;
+            $.totalPrincipalOutstanding -= principalApplied;
+            $.totalRepaid += repayment;
+            $.totalFeesEarned += feeApplied;
+            merchant.totalRepaid += repayment;
+
+            emit RepaymentApplied(
+                activeAdvanceId, invoiceId, repayment, principalApplied, feeApplied, advance.totalOwed - advance.repaid
+            );
+
+            if (advance.repaid == advance.totalOwed) {
+                advance.status = RevlineTypes.AdvanceStatus.Repaid;
+                advance.repaidAt = uint64(block.timestamp);
+                merchant.activeAdvanceId = 0;
+                emit AdvanceRepaid(activeAdvanceId, invoice.merchant, advance.repaid, advance.repaidAt);
+            }
+        }
+
+        uint256 merchantNet = invoice.amount - repayment;
+        USDCTransferLib.safeTransfer($.usdc, merchant.payout, merchantNet);
+
+        emit InvoicePaid(invoiceId, invoice.merchant, msg.sender, invoice.amount, merchantNet, repayment);
     }
 
     function getInvoice(uint256 invoiceId) external view returns (RevlineTypes.Invoice memory) {

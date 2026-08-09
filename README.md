@@ -4,7 +4,7 @@ Revenue-backed USDC working-capital advances on Arc Testnet. Only payments made 
 
 ## Arc Testnet deployment
 
-Copy `.env.example` to `.env`, add funded local wallet keys, and keep `.env` uncommitted. `ARC_TESTNET_RPC_URL` is runtime configuration and must not be exposed to browser code.
+Copy `.env.example` to `.env`, add funded local wallet keys, and keep `.env` uncommitted. Set `ARC_TESTNET_RPC_URL` in local `.env` to the supplied canonical Arc Testnet value; it is runtime configuration and must not be committed or exposed to browser code.
 
 ```sh
 source .env

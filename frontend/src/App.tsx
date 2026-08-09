@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import type { Address, WalletClient } from "viem";
 import { connectWallet } from "./wallet";
+import LandingScreen from "./screens/LandingScreen";
 import MerchantScreen from "./screens/MerchantScreen";
 import PayInvoiceScreen from "./screens/PayInvoiceScreen";
+import PoolScreen from "./screens/PoolScreen";
 import "./styles.css";
 
 type AccountEventProvider = {
@@ -51,11 +53,19 @@ function App() {
   };
 
   const payRoute = route.match(/^#\/pay\/(.+)$/)?.[1];
+  const currentRoute = route || "#/";
+  const isMerchantRoute = currentRoute === "#/merchant";
+  const isPoolRoute = currentRoute === "#/pool";
 
   return (
     <main className="app-shell">
       <header className="topbar">
         <a className="brand" href="#/" aria-label="Revline home">Revline</a>
+        <nav className="topnav" aria-label="Primary navigation">
+          <a className={currentRoute === "#/" ? "active" : undefined} href="#/">Overview</a>
+          <a className={isMerchantRoute ? "active" : undefined} href="#/merchant">Merchant</a>
+          <a className={isPoolRoute ? "active" : undefined} href="#/pool">Pool</a>
+        </nav>
         <button className="button button-secondary" onClick={connect} disabled={connecting}>
           {connecting ? "Connecting…" : session ? `${session.account.slice(0, 6)}…${session.account.slice(-4)}` : "Connect wallet"}
         </button>
@@ -63,14 +73,19 @@ function App() {
       {error && <p className="notice notice-error" role="alert">{error}</p>}
       {payRoute ? (
         <PayInvoiceScreen invoiceId={payRoute} account={session?.account} walletClient={session?.walletClient} onConnect={connect} />
-      ) : session ? (
+      ) : isPoolRoute ? (
+        <PoolScreen />
+      ) : isMerchantRoute && session ? (
         <MerchantScreen account={session.account} walletClient={session.walletClient} />
-      ) : (
+      ) : isMerchantRoute ? (
         <section className="welcome">
-          <h1>Revenue-backed working capital</h1>
-          <p>Connect an Arc Testnet wallet to register your business, issue invoices, and view available credit.</p>
+          <p className="eyebrow">Merchant dashboard</p>
+          <h1>Connect to manage your revenue line.</h1>
+          <p>Use an Arc Testnet wallet to register your business, issue invoices, and view available credit.</p>
           <button className="button" onClick={connect} disabled={connecting}>Connect wallet</button>
         </section>
+      ) : (
+        <LandingScreen />
       )}
     </main>
   );

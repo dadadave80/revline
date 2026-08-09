@@ -14,6 +14,7 @@ import {IERC8153} from "@lattice/interfaces/external/ercs/IERC8153.sol";
 import {Script} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
 import {RevlineInit} from "../src/RevlineInit.sol";
+import {CreditFacet} from "../src/facets/CreditFacet.sol";
 import {InvoiceFacet} from "../src/facets/InvoiceFacet.sol";
 import {MerchantFacet} from "../src/facets/MerchantFacet.sol";
 
@@ -45,7 +46,7 @@ contract DeployRevline is Script {
     }
 
     function deploy(address usdc, address admin) public returns (Lattice diamond) {
-        FacetCut[] memory cuts = new FacetCut[](7);
+        FacetCut[] memory cuts = new FacetCut[](8);
         cuts[0] = _add(address(new ERC165Facet()));
         cuts[1] = _add(address(new AccessControl()));
         cuts[2] = _add(address(new Pausable()));
@@ -60,6 +61,9 @@ contract DeployRevline is Script {
             facetAddress: address(new InvoiceFacet()),
             action: FacetCutAction.Add,
             functionSelectors: _invoiceSelectors()
+        });
+        cuts[7] = FacetCut({
+            facetAddress: address(new CreditFacet()), action: FacetCutAction.Add, functionSelectors: _creditSelectors()
         });
 
         address[] memory initAddresses = new address[](2);
@@ -91,6 +95,16 @@ contract DeployRevline is Script {
         s[2] = InvoiceFacet.payInvoice.selector;
         s[3] = InvoiceFacet.getInvoice.selector;
         s[4] = InvoiceFacet.getMerchantInvoiceIds.selector;
+    }
+
+    function _creditSelectors() internal pure returns (bytes4[] memory s) {
+        s = new bytes4[](6);
+        s[0] = CreditFacet.creditTerms.selector;
+        s[1] = CreditFacet.creditQuote.selector;
+        s[2] = CreditFacet.drawAdvance.selector;
+        s[3] = CreditFacet.getAdvance.selector;
+        s[4] = CreditFacet.getMerchantAdvanceIds.selector;
+        s[5] = CreditFacet.poolStats.selector;
     }
 
     function run() external returns (Lattice diamond) {

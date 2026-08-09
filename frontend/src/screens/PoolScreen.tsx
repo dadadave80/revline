@@ -42,7 +42,7 @@ export default function PoolScreen() {
       <MetricCard label="Outstanding principal" value={stats ? `${formatUSDC(stats.outstandingPrincipal)} USDC` : "—"} detail="Active receivable exposure" />
       <MetricCard label="Managed assets" value={stats ? `${formatUSDC(stats.managedAssets)} USDC` : "—"} detail="Liquid USDC + outstanding principal" />
       <MetricCard label="Total advanced" value={stats ? `${formatUSDC(stats.totalAdvanced)} USDC` : "—"} detail="Principal deployed" />
-      <MetricCard label="Total repayments" value={stats ? `${formatUSDC(stats.totalRepaid)} USDC` : "—"} detail="Principal returned to reserve" />
+      <MetricCard label="Total repayments" value={stats ? `${formatUSDC(stats.totalRepaid)} USDC` : "—"} detail="Principal + financing fees collected" />
       <MetricCard label="Realized financing fees" value={stats ? `${formatUSDC(stats.totalFeesEarned)} USDC` : "—"} detail="Fees collected, never projected" />
     </section>
     <section className="accounting-card card" aria-labelledby="accounting-heading">

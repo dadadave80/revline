@@ -1,0 +1,3 @@
+@lattice/=lib/lattice/src/
+@diamond/=lib/lattice/lib/diamond-lib/src/
+forge-std/=lib/lattice/lib/forge-std/src/

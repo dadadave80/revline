@@ -5,6 +5,11 @@ import MerchantScreen from "./screens/MerchantScreen";
 import PayInvoiceScreen from "./screens/PayInvoiceScreen";
 import "./styles.css";
 
+type AccountEventProvider = {
+  on?: (event: "accountsChanged", listener: (accounts: string[]) => void) => void;
+  removeListener?: (event: "accountsChanged", listener: (accounts: string[]) => void) => void;
+};
+
 function App() {
   const [session, setSession] = useState<{ account: Address; walletClient: WalletClient }>();
   const [error, setError] = useState<string>();
@@ -15,6 +20,17 @@ function App() {
     const onHashChange = () => setRoute(window.location.hash);
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  useEffect(() => {
+    const provider = window.ethereum as (typeof window.ethereum & AccountEventProvider) | undefined;
+    if (!provider?.on) return;
+    const onAccountsChanged = (accounts: string[]) => {
+      setSession(undefined);
+      setError(accounts[0] ? "Wallet account changed. Reconnect before continuing." : "Wallet disconnected. Reconnect before continuing.");
+    };
+    provider.on("accountsChanged", onAccountsChanged);
+    return () => provider.removeListener?.("accountsChanged", onAccountsChanged);
   }, []);
 
   const connect = async () => {

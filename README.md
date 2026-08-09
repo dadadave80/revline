@@ -39,6 +39,17 @@ forge script script/SeedDemo.s.sol:SeedDemo \
 
 `SeedDemo` intentionally rejects an already registered merchant. Use a fresh merchant key for a repeatable 500-USDC demo rather than accidentally adding revenue to an existing profile.
 
+## Circle reserve funding
+
+Circle App Kit abstracts the CCTP burn, attestation, and mint flow. The Node-only bridge script sends Base Sepolia USDC to the Arc Testnet Revline Diamond, using Circle's Forwarding Service to submit the destination mint. It needs Base Sepolia test USDC and ETH for source gas; keep `BASE_SEPOLIA_PRIVATE_KEY` in local `.env`, never in a browser variable or committed file.
+
+```sh
+npm install
+npm run bridge:liquidity -- 100.00
+```
+
+Record `poolStats()` before and after a successful bridge. The observed `liquidUSDC` delta is the lendable reserve amount; forwarding fees can make it lower than the source amount. Bridge receipts fund only the reserve: they never invoke `payInvoice()` and cannot create or change merchant revenue.
+
 ## Smoke checks
 
 ```sh

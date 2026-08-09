@@ -93,6 +93,7 @@ export default function PayInvoiceScreen({ invoiceId: invoiceIdText, account, wa
   const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState<string>();
   const [error, setError] = useState<string>();
+  const [approvalHash, setApprovalHash] = useState<string>();
   const [paymentHash, setPaymentHash] = useState<string>();
 
   const refresh = useCallback(async (preserveState = false): Promise<boolean> => {
@@ -150,6 +151,7 @@ export default function PayInvoiceScreen({ invoiceId: invoiceIdText, account, wa
     if (!state || !account || !walletClient || invoiceId === undefined) return;
     setPending(true);
     setError(undefined);
+    setApprovalHash(undefined);
     setPaymentHash(undefined);
     try {
       await ensureArcNetwork();
@@ -175,6 +177,7 @@ export default function PayInvoiceScreen({ invoiceId: invoiceIdText, account, wa
         setNotice("Confirming USDC approval…");
         const approval = await publicClient.waitForTransactionReceipt({ hash: approvalHash });
         if (approval.status !== "success") throw new Error("USDC approval was not confirmed.");
+        setApprovalHash(approval.transactionHash);
       }
 
       setNotice("Submitting payment…");
@@ -222,6 +225,7 @@ export default function PayInvoiceScreen({ invoiceId: invoiceIdText, account, wa
     {status === "Expired" && <p className="notice notice-error" role="alert">This invoice expired and can no longer be paid.</p>}
     {error && <p className="notice notice-error" role="alert">{error}</p>}
     {notice && <p className="notice notice-success" role="status">{notice}</p>}
+    {approvalHash && <p className="notice notice-success" role="status">USDC approved · <a href={arcscan(approvalHash)} target="_blank" rel="noreferrer">View approval on Arcscan</a></p>}
     {paymentHash && <div className="payment-success" role="status"><strong>Payment received</strong><span>{formatUSDC(state.invoice.amount)} USDC paid in full.</span><a href={arcscan(paymentHash)} target="_blank" rel="noreferrer">View payment on Arcscan</a></div>}
     <button className="button checkout-action" onClick={() => { if (!account) void onConnect(); else void pay(); }} disabled={pending || (!account ? false : !canPay || allowanceLoading)}>
       {pending ? "Processing…" : actionLabel}

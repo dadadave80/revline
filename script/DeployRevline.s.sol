@@ -1,0 +1,75 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.30;
+
+import {Lattice} from "@lattice/Lattice.sol";
+import {AccessControl} from "@lattice/access/AccessControl.sol";
+import {Pausable} from "@lattice/security/Pausable.sol";
+import {AccessControlDiamondCut} from "@lattice/governance/AccessControlDiamondCut.sol";
+import {DiamondIntrospectionInit} from "@lattice/utils/DiamondIntrospectionInit.sol";
+import {ERC165Facet} from "@diamond/facets/ERC165Facet.sol";
+import {DiamondLoupeFacet} from "@diamond/facets/DiamondLoupeFacet.sol";
+import {MultiInit} from "@diamond/initializers/MultiInit.sol";
+import {FacetCut, FacetCutAction} from "@diamond/libraries/DiamondLib.sol";
+import {IERC8153} from "@lattice/interfaces/external/ercs/IERC8153.sol";
+import {Script} from "forge-std/Script.sol";
+import {console2} from "forge-std/console2.sol";
+import {RevlineInit} from "../src/RevlineInit.sol";
+
+contract DeployRevline is Script {
+    address internal constant ARC_USDC = 0x3600000000000000000000000000000000000000;
+
+    function _exportedSelectors(address facet) internal view returns (bytes4[] memory selectors) {
+        (bool ok, bytes memory ret) = facet.staticcall(abi.encodeCall(IERC8153.exportSelectors, ()));
+        require(ok, "exportSelectors reverted");
+
+        bytes memory packed = abi.decode(ret, (bytes));
+        require(packed.length != 0, "no selectors");
+        require(packed.length % 4 == 0, "bad selector bytes");
+
+        uint256 count = packed.length / 4;
+        selectors = new bytes4[](count);
+
+        for (uint256 i; i < count; ++i) {
+            bytes4 sel;
+            assembly ("memory-safe") {
+                sel := mload(add(add(packed, 0x20), mul(i, 4)))
+            }
+            selectors[i] = sel;
+        }
+    }
+
+    function _add(address facet) internal view returns (FacetCut memory) {
+        return FacetCut({facetAddress: facet, action: FacetCutAction.Add, functionSelectors: _exportedSelectors(facet)});
+    }
+
+    function deploy(address usdc, address admin) public returns (Lattice diamond) {
+        FacetCut[] memory cuts = new FacetCut[](5);
+        cuts[0] = _add(address(new ERC165Facet()));
+        cuts[1] = _add(address(new AccessControl()));
+        cuts[2] = _add(address(new Pausable()));
+        cuts[3] = _add(address(new DiamondLoupeFacet()));
+        cuts[4] = _add(address(new AccessControlDiamondCut()));
+
+        address[] memory initAddresses = new address[](2);
+        initAddresses[0] = address(new RevlineInit());
+        initAddresses[1] = address(new DiamondIntrospectionInit());
+
+        bytes[] memory initData = new bytes[](2);
+        initData[0] = abi.encodeCall(RevlineInit.init, (admin, usdc));
+        initData[1] = abi.encodeCall(DiamondIntrospectionInit.initUpgradeable, ());
+
+        MultiInit multiInit = new MultiInit();
+        diamond = new Lattice();
+        diamond.initialize(cuts, address(multiInit), abi.encodeCall(MultiInit.multiInit, (initAddresses, initData)));
+    }
+
+    function run() external returns (Lattice diamond) {
+        uint256 privateKey = vm.envUint("PRIVATE_KEY");
+        address admin = vm.addr(privateKey);
+
+        vm.startBroadcast(privateKey);
+        diamond = deploy(ARC_USDC, admin);
+        console2.log("Revline Diamond", address(diamond));
+        vm.stopBroadcast();
+    }
+}

@@ -14,6 +14,7 @@ import {IERC8153} from "@lattice/interfaces/external/ercs/IERC8153.sol";
 import {Script} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
 import {RevlineInit} from "../src/RevlineInit.sol";
+import {MerchantFacet} from "../src/facets/MerchantFacet.sol";
 
 contract DeployRevline is Script {
     address internal constant ARC_USDC = 0x3600000000000000000000000000000000000000;
@@ -43,12 +44,17 @@ contract DeployRevline is Script {
     }
 
     function deploy(address usdc, address admin) public returns (Lattice diamond) {
-        FacetCut[] memory cuts = new FacetCut[](5);
+        FacetCut[] memory cuts = new FacetCut[](6);
         cuts[0] = _add(address(new ERC165Facet()));
         cuts[1] = _add(address(new AccessControl()));
         cuts[2] = _add(address(new Pausable()));
         cuts[3] = _add(address(new DiamondLoupeFacet()));
         cuts[4] = _add(address(new AccessControlDiamondCut()));
+        cuts[5] = FacetCut({
+            facetAddress: address(new MerchantFacet()),
+            action: FacetCutAction.Add,
+            functionSelectors: _merchantSelectors()
+        });
 
         address[] memory initAddresses = new address[](2);
         initAddresses[0] = address(new RevlineInit());
@@ -61,6 +67,15 @@ contract DeployRevline is Script {
         MultiInit multiInit = new MultiInit();
         diamond = new Lattice();
         diamond.initialize(cuts, address(multiInit), abi.encodeCall(MultiInit.multiInit, (initAddresses, initData)));
+    }
+
+    function _merchantSelectors() internal pure returns (bytes4[] memory s) {
+        s = new bytes4[](5);
+        s[0] = MerchantFacet.registerMerchant.selector;
+        s[1] = MerchantFacet.setPayoutAddress.selector;
+        s[2] = MerchantFacet.setCreditEnabled.selector;
+        s[3] = MerchantFacet.getMerchant.selector;
+        s[4] = MerchantFacet.trailingRevenue.selector;
     }
 
     function run() external returns (Lattice diamond) {

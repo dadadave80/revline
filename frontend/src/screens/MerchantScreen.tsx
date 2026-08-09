@@ -174,6 +174,13 @@ export default function MerchantScreen({ account, walletClient }: MerchantScreen
 
   if (loading && !state) return <p className="loading">Loading live Revline state…</p>;
 
+  if (!state && error) return <section className="registration card">
+    <p className="eyebrow">Live contract read</p>
+    <h1>Unable to load your merchant account</h1>
+    <p className="notice notice-error" role="alert">{error}</p>
+    <button className="button" onClick={() => void refresh()}>Try again</button>
+  </section>;
+
   if (!state?.merchant.registered) {
     return <section className="registration card">
       <p className="eyebrow">Merchant account</p>

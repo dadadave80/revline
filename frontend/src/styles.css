@@ -12,6 +12,13 @@ a { color: #8cbdff; }
 .button { border: 0; border-radius: 9px; padding: 11px 16px; color: #06111e; background: #7eb6ff; font-weight: 700; }
 .button:hover:not(:disabled) { background: #a1ccff; }
 .button-secondary { color: #dce9fb; background: #162943; border: 1px solid #304766; }
+.wallet-entry { position: relative; flex: 0 0 auto; }
+.wallet-menu { position: absolute; z-index: 20; top: calc(100% + 10px); right: 0; display: grid; width: min(300px, calc(100vw - 32px)); gap: 8px; padding: 14px; border: 1px solid #304766; border-radius: 12px; background: #0b192b; box-shadow: 0 18px 45px rgb(0 0 0 / 35%); }
+.wallet-menu strong { color: #f5f8ff; font-size: .9rem; overflow-wrap: anywhere; }
+.wallet-option { display: flex; width: 100%; align-items: center; gap: 10px; padding: 10px; color: #dce9fb; text-align: left; border: 1px solid #20324a; border-radius: 8px; background: #0e2036; }
+.wallet-option:hover, .wallet-option:focus-visible { border-color: #5c83b4; background: #162943; outline: none; }
+.wallet-option img { flex: 0 0 auto; border-radius: 6px; }
+.muted { margin: 0; color: #91a9c7; font-size: .78rem; line-height: 1.4; }
 .welcome, .registration { max-width: 620px; margin: 96px auto; }
 .welcome h1, h1, h2 { color: #f5f8ff; letter-spacing: -.035em; }
 .welcome h1, .registration h1 { font-size: clamp(2.25rem, 6vw, 3.75rem); line-height: 1.03; margin: 0 0 18px; }

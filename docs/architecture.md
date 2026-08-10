@@ -42,7 +42,7 @@ Base Sepolia reserve wallet
 - `CreditFacet` quotes fixed V1 credit, creates one active advance per merchant, tracks principal receivables separately from fees, and exposes pool statistics.
 - `RevlineStorage` holds the USDC address, merchants, invoices, advances, daily revenue buckets, and protocol totals in a shared ERC-7201-style namespace.
 - `CreditMath`, `RevenueLib`, and `USDCTransferLib` centralize the fixed economics, 30-day UTC bucket calculation, and safe ERC-20 calls.
-- Lattice supplies the Diamond proxy, loupe/ERC-165, `AccessControl`, `Pausable`, shared `ReentrancyGuard`, and admin-gated Diamond cuts. Lattice is infrastructure only, not the Revline product or reserve-accounting model.
+- Lattice supplies the Diamond proxy, `Receive` zero-selector routing, loupe/ERC-165, `AccessControl`, `Pausable`, shared `ReentrancyGuard`, and admin-gated Diamond cuts. `Receive` accepts empty-calldata native Arc value only; it does not alter Revline’s six-decimal ERC-20 reserve accounting. Lattice is infrastructure only, not the Revline product or reserve-accounting model.
 
 ## Asset and accounting flow
 
@@ -68,4 +68,4 @@ fee repayment               -> liquid USDC and realized fee income increase
 
 ## Deployment composition
 
-`DeployRevline.s.sol` installs ERC-165, access control, pausing, loupe, admin DiamondCut, and the three Revline facets. `RevlineInit` runs during Diamond initialization, grants the deployer default-admin and underwriter roles, registers interfaces, starts unpaused, and stores the USDC address. The deployment tests verify role ownership, selector routing, upgrade authorization, pause behavior, and initializer composition.
+`DeployRevline.s.sol` installs Receive, ERC-165, access control, pausing, loupe, admin DiamondCut, and the three Revline facets. `RevlineInit` runs during Diamond initialization, grants the deployer default-admin and underwriter roles, registers interfaces, starts unpaused, and stores the USDC address. The deployment tests verify role ownership, zero-selector routing, upgrade authorization, pause behavior, native/ERC-20 accounting separation, and initializer composition.

@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { getAddress, type Address, type WalletClient } from "viem";
+import { type Address } from "viem";
 import { ARC_USDC, arcTestnet } from "../chain";
 import { getRevlineAddress, readRevline, writeRevline } from "../contract";
 import { formatUSDC } from "../format";
-import { ensureArcNetwork, publicClient } from "../wallet";
+import { publicClient, requireCurrentSession, type WalletSession } from "../wallet";
 
 type Invoice = {
   merchant: Address;
@@ -21,8 +21,7 @@ type Merchant = {
 type CheckoutState = { invoice: Invoice; merchant: Merchant };
 type PayInvoiceScreenProps = {
   invoiceId: string;
-  account?: Address;
-  walletClient?: WalletClient;
+  session?: WalletSession;
   onConnect: () => Promise<void>;
 };
 
@@ -53,13 +52,6 @@ const erc20Abi = [
 const arcscan = (hash: string) => `https://testnet.arcscan.app/tx/${hash}`;
 const now = () => BigInt(Math.floor(Date.now() / 1000));
 
-async function activeWalletAccount(expected: Address): Promise<Address> {
-  const accounts = await window.ethereum?.request({ method: "eth_accounts" }) as string[] | undefined;
-  const active = accounts?.[0];
-  if (!active || getAddress(active) !== expected) throw new Error("Wallet account changed. Reconnect before continuing.");
-  return expected;
-}
-
 function paymentError(cause: unknown): string {
   const error = cause instanceof Error ? cause : new Error("Payment could not be completed.");
   const message = `${(error as Error & { shortMessage?: string }).shortMessage ?? ""} ${error.message}`;
@@ -84,7 +76,8 @@ function expiry(invoice: Invoice): string {
   return Number.isSafeInteger(seconds) ? new Date(seconds * 1_000).toLocaleString() : "Expiration unavailable";
 }
 
-export default function PayInvoiceScreen({ invoiceId: invoiceIdText, account, walletClient, onConnect }: PayInvoiceScreenProps) {
+export default function PayInvoiceScreen({ invoiceId: invoiceIdText, session, onConnect }: PayInvoiceScreenProps) {
+  const account = session?.account;
   const invoiceId = /^\d+$/.test(invoiceIdText) ? BigInt(invoiceIdText) : undefined;
   const [state, setState] = useState<CheckoutState>();
   const [allowance, setAllowance] = useState<bigint>();
@@ -131,11 +124,11 @@ export default function PayInvoiceScreen({ invoiceId: invoiceIdText, account, wa
 
     let cancelled = false;
     setAllowanceLoading(true);
-    void activeWalletAccount(account).then((activeAccount) => publicClient.readContract({
+    void requireCurrentSession(session!).then((current) => publicClient.readContract({
       address: ARC_USDC,
       abi: erc20Abi,
       functionName: "allowance",
-      args: [activeAccount, getRevlineAddress()],
+      args: [current.account, getRevlineAddress()],
     })).then((value) => {
       if (!cancelled) setAllowance(value);
     }).catch((cause) => {
@@ -148,14 +141,14 @@ export default function PayInvoiceScreen({ invoiceId: invoiceIdText, account, wa
   }, [account, state]);
 
   const pay = async () => {
-    if (!state || !account || !walletClient || invoiceId === undefined) return;
+    if (!state || !session || invoiceId === undefined) return;
     setPending(true);
     setError(undefined);
     setApprovalHash(undefined);
     setPaymentHash(undefined);
     try {
-      await ensureArcNetwork();
-      const payer = await activeWalletAccount(account);
+      let current = await requireCurrentSession(session);
+      const payer = current.account;
       setNotice("Checking your USDC balance…");
       const [balance, currentAllowance] = await Promise.all([
         publicClient.readContract({ address: ARC_USDC, abi: erc20Abi, functionName: "balanceOf", args: [payer] }),
@@ -165,9 +158,9 @@ export default function PayInvoiceScreen({ invoiceId: invoiceIdText, account, wa
 
       if (currentAllowance < state.invoice.amount) {
         setNotice("Approving the exact invoice amount…");
-        const approvalAccount = await activeWalletAccount(account);
-        const approvalHash = await walletClient.writeContract({
-          account: approvalAccount,
+        current = await requireCurrentSession(session);
+        const approvalHash = await current.walletClient.writeContract({
+          account: current.account,
           chain: arcTestnet,
           address: ARC_USDC,
           abi: erc20Abi,
@@ -181,8 +174,8 @@ export default function PayInvoiceScreen({ invoiceId: invoiceIdText, account, wa
       }
 
       setNotice("Submitting payment…");
-      const paymentAccount = await activeWalletAccount(account);
-      const hash = await writeRevline(walletClient, paymentAccount, "payInvoice", [invoiceId]);
+      current = await requireCurrentSession(session);
+      const hash = await writeRevline(current.walletClient, current.account, "payInvoice", [invoiceId]);
       setNotice("Confirming payment…");
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status !== "success") throw new Error("Payment transaction reverted.");

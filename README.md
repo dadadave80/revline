@@ -29,6 +29,8 @@ Stablecoin businesses can show cash flow onchain but still lack short-term worki
 
 All business amounts use Arc USDC’s six-decimal ERC-20 units. Arc’s 18-decimal native gas balance is never used for protocol accounting.
 
+The Diamond also installs Lattice’s `Receive` facet for empty-calldata native Arc transfers. Native value is accepted at the EVM level but is not ERC-20 reserve liquidity, verified revenue, managed assets, drawable credit, or repayment income. Fund the protocol with an ERC-20 `transfer` to `0x3600000000000000000000000000000000000000`. The MVP has no native-value conversion or withdrawal path; do not send native value expecting it to increase the pool.
+
 ```text
 managedAssets = liquid USDC + outstanding principal
 ```

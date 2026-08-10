@@ -11,6 +11,7 @@ import {DiamondLoupeFacet} from "@diamond/facets/DiamondLoupeFacet.sol";
 import {MultiInit} from "@diamond/initializers/MultiInit.sol";
 import {FacetCut, FacetCutAction} from "@diamond/libraries/DiamondLib.sol";
 import {IERC8153} from "@lattice/interfaces/external/ercs/IERC8153.sol";
+import {Receive} from "@lattice/Receive.sol";
 import {Script} from "forge-std/Script.sol";
 import {console2} from "forge-std/console2.sol";
 import {RevlineInit} from "../src/RevlineInit.sol";
@@ -49,23 +50,24 @@ contract DeployRevline is Script {
         require(usdc != address(0), "USDC is zero");
         require(admin != address(0), "admin is zero");
 
-        FacetCut[] memory cuts = new FacetCut[](8);
-        cuts[0] = _add(address(new ERC165Facet()));
-        cuts[1] = _add(address(new AccessControl()));
-        cuts[2] = _add(address(new Pausable()));
-        cuts[3] = _add(address(new DiamondLoupeFacet()));
-        cuts[4] = _add(address(new AccessControlDiamondCut()));
-        cuts[5] = FacetCut({
+        FacetCut[] memory cuts = new FacetCut[](9);
+        cuts[0] = _add(address(new Receive()));
+        cuts[1] = _add(address(new ERC165Facet()));
+        cuts[2] = _add(address(new AccessControl()));
+        cuts[3] = _add(address(new Pausable()));
+        cuts[4] = _add(address(new DiamondLoupeFacet()));
+        cuts[5] = _add(address(new AccessControlDiamondCut()));
+        cuts[6] = FacetCut({
             facetAddress: address(new MerchantFacet()),
             action: FacetCutAction.Add,
             functionSelectors: _merchantSelectors()
         });
-        cuts[6] = FacetCut({
+        cuts[7] = FacetCut({
             facetAddress: address(new InvoiceFacet()),
             action: FacetCutAction.Add,
             functionSelectors: _invoiceSelectors()
         });
-        cuts[7] = FacetCut({
+        cuts[8] = FacetCut({
             facetAddress: address(new CreditFacet()), action: FacetCutAction.Add, functionSelectors: _creditSelectors()
         });
 
@@ -111,11 +113,10 @@ contract DeployRevline is Script {
     }
 
     function run() external returns (Lattice diamond) {
-        uint256 privateKey = vm.envUint("PRIVATE_KEY");
-        address admin = vm.addr(privateKey);
+        address admin = msg.sender;
         require(ARC_USDC.code.length != 0, "Arc USDC unavailable");
 
-        vm.startBroadcast(privateKey);
+        vm.startBroadcast();
         diamond = deploy(ARC_USDC, admin);
         console2.log("Revline Diamond", address(diamond));
         console2.log("Arc USDC", ARC_USDC);

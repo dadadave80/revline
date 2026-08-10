@@ -3,10 +3,11 @@ import revlineAbiJson from "./abi/revline.json";
 import { publicClient } from "./wallet";
 
 export const revlineAbi = revlineAbiJson as Abi;
+export const CANONICAL_REVLINE_ADDRESS = "0x6F06657d1cFe8598d15Ef9b8705963d1e6F7EDc4" as const;
 
 export function getRevlineAddress(): Address {
-  const address = import.meta.env.VITE_REVLINE_ADDRESS;
-  if (!address || address === "0x") throw new Error("VITE_REVLINE_ADDRESS is required");
+  const configured = import.meta.env.VITE_REVLINE_ADDRESS?.trim();
+  const address = !configured || configured === "0x" ? CANONICAL_REVLINE_ADDRESS : configured;
   return getAddress(address);
 }
 

@@ -1,21 +1,17 @@
 import { useEffect, useState } from "react";
-import type { Address, WalletClient } from "viem";
-import { connectWallet } from "./wallet";
+import { shortAddress } from "./wallet";
+import { useWallet } from "./WalletProvider";
 import LandingScreen from "./screens/LandingScreen";
 import MerchantScreen from "./screens/MerchantScreen";
 import PayInvoiceScreen from "./screens/PayInvoiceScreen";
 import PoolScreen from "./screens/PoolScreen";
+import AdminConsoleScreen from "./screens/AdminConsoleScreen";
+import AdminSectionScreen from "./screens/AdminSectionScreen";
 import "./styles.css";
 
-type AccountEventProvider = {
-  on?: (event: "accountsChanged", listener: (accounts: string[]) => void) => void;
-  removeListener?: (event: "accountsChanged", listener: (accounts: string[]) => void) => void;
-};
-
 function App() {
-  const [session, setSession] = useState<{ account: Address; walletClient: WalletClient }>();
-  const [error, setError] = useState<string>();
-  const [connecting, setConnecting] = useState(false);
+  const { wallets, session, status, error, connect, disconnect, switchNetwork } = useWallet();
+  const [walletMenuOpen, setWalletMenuOpen] = useState(false);
   const [route, setRoute] = useState(() => window.location.hash);
 
   useEffect(() => {
@@ -25,37 +21,28 @@ function App() {
   }, []);
 
   useEffect(() => {
-    const provider = window.ethereum as (typeof window.ethereum & AccountEventProvider) | undefined;
-    if (!provider?.on) return;
-    const onAccountsChanged = (accounts: string[]) => {
-      setSession(undefined);
-      setError(accounts[0] ? "Wallet account changed. Reconnect before continuing." : "Wallet disconnected. Reconnect before continuing.");
+    if (!walletMenuOpen) return;
+    const close = (event: PointerEvent) => {
+      if (!(event.target as Element).closest(".wallet-entry")) setWalletMenuOpen(false);
     };
-    provider.on("accountsChanged", onAccountsChanged);
-    return () => provider.removeListener?.("accountsChanged", onAccountsChanged);
-  }, []);
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setWalletMenuOpen(false); };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [walletMenuOpen]);
 
-  const connect = async () => {
-    setConnecting(true);
-    setError(undefined);
-    try {
-      setSession(await connectWallet());
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : "Unable to connect wallet";
-      setError(/user rejected|rejected the request|denied/i.test(message)
-        ? "Wallet connection or network switch was rejected."
-        : /chain|network|wallet_switchEthereumChain|wallet_addEthereumChain/i.test(message)
-          ? "Switch your wallet to Arc Testnet to use Revline."
-          : message);
-    } finally {
-      setConnecting(false);
-    }
-  };
+  const connecting = status === "connecting" || status === "discovering";
+  const openWalletMenu = async () => { setWalletMenuOpen(true); };
 
   const payRoute = route.match(/^#\/pay\/(.+)$/)?.[1];
   const currentRoute = route || "#/";
   const isMerchantRoute = currentRoute === "#/merchant";
   const isPoolRoute = currentRoute === "#/pool";
+  const isAdminRoute = currentRoute === "#/admin";
+  const adminSection = currentRoute === "#/admin/underwriting" ? "underwriting" : currentRoute === "#/admin/protocol" ? "protocol" : undefined;
 
   return (
     <main className="app-shell">
@@ -65,14 +52,39 @@ function App() {
           <a className={currentRoute === "#/" ? "active" : undefined} href="#/">Overview</a>
           <a className={isMerchantRoute ? "active" : undefined} href="#/merchant">Merchant</a>
           <a className={isPoolRoute ? "active" : undefined} href="#/pool">Pool</a>
+          {session && <a className={isAdminRoute || adminSection ? "active" : undefined} href="#/admin">Admin</a>}
         </nav>
-        <button className="button button-secondary" onClick={connect} disabled={connecting}>
-          {connecting ? "Connecting…" : session ? `${session.account.slice(0, 6)}…${session.account.slice(-4)}` : "Connect wallet"}
-        </button>
+        <div className="wallet-entry">
+          <button className="button button-secondary" onClick={() => status === "wrong-chain" ? void switchNetwork() : setWalletMenuOpen((open) => !open)} disabled={connecting}>
+            {connecting ? "Connecting…" : status === "wrong-chain" ? "Switch to Arc" : session ? shortAddress(session.account) : "Connect wallet"}
+          </button>
+          {walletMenuOpen && !session && (
+            <div className="wallet-menu" role="dialog" aria-label="Choose a wallet">
+              <strong>Choose a wallet</strong>
+              {wallets.length === 0 ? <p className="muted">No injected wallets detected.</p> : wallets.map((wallet) => (
+                <button key={wallet.id} className="wallet-option" onClick={() => { void connect(wallet); setWalletMenuOpen(false); }}>
+                  {wallet.icon && <img src={wallet.icon} alt="" width="24" height="24" />}
+                  <span>{wallet.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {walletMenuOpen && session && (
+            <div className="wallet-menu" role="dialog" aria-label="Connected wallet">
+              <strong>{shortAddress(session.account)}</strong>
+              <button className="wallet-option" onClick={() => { disconnect(); setWalletMenuOpen(false); }}>Disconnect session</button>
+              <span className="muted">Wallet permissions remain unchanged.</span>
+            </div>
+          )}
+        </div>
       </header>
       {error && <p className="notice notice-error" role="alert">{error}</p>}
       {payRoute ? (
-        <PayInvoiceScreen invoiceId={payRoute} account={session?.account} walletClient={session?.walletClient} onConnect={connect} />
+        <PayInvoiceScreen invoiceId={payRoute} session={session} onConnect={openWalletMenu} />
+      ) : adminSection ? (
+        <AdminSectionScreen account={session?.account} session={session} section={adminSection} />
+      ) : isAdminRoute ? (
+        <AdminConsoleScreen account={session?.account} />
       ) : isPoolRoute ? (
         <PoolScreen />
       ) : isMerchantRoute && session ? (
@@ -82,7 +94,7 @@ function App() {
           <p className="eyebrow">Merchant dashboard</p>
           <h1>Connect to manage your revenue line.</h1>
           <p>Use an Arc Testnet wallet to register your business, issue invoices, and view available credit.</p>
-          <button className="button" onClick={connect} disabled={connecting}>Connect wallet</button>
+          <button className="button" onClick={() => setWalletMenuOpen(true)} disabled={connecting}>Connect wallet</button>
         </section>
       ) : (
         <LandingScreen />
